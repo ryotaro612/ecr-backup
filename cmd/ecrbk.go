@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
-	_ "github.com/docker/docker/client"
+	"github.com/docker/docker/api/types/registry"
+	"github.com/docker/docker/client"
 	"log/slog"
 	"os"
 )
@@ -33,6 +35,13 @@ func main() {
 
 	cli := ecr.NewFromConfig(cfg)
 
+	regi, err := cli.DescribeRegistry(ctx, &ecr.DescribeRegistryInput{})
+	if err != nil {
+		logger.ErrorContext(ctx, "inquiring information of the registry was failed", "error", err)
+		os.Exit(1)
+	}
+	fmt.Println(*regi.RegistryId)
+	fmt.Println(cfg.Region)
 	repo, err := cli.DescribeRepositories(ctx, &ecr.DescribeRepositoriesInput{
 		RepositoryNames: []string{*repositoryName},
 	})
@@ -44,6 +53,7 @@ func main() {
 		logger.ErrorContext(ctx, "the repository was not found", "repository", repositoryName)
 		os.Exit(1)
 	}
+
 	uri := repo.Repositories[0].RepositoryUri
 
 	images, err := cli.ListImages(ctx, &ecr.ListImagesInput{RepositoryName: repositoryName})
@@ -56,8 +66,12 @@ func main() {
 		logger.ErrorContext(ctx, "getting the authorization token was failed", "error", err)
 		os.Exit(1)
 	}
-	fmt.Println(token)
-
+	fmt.Println(*token.AuthorizationData[0].AuthorizationToken)
+	dec, err := base64.StdEncoding.DecodeString(*token.AuthorizationData[0].AuthorizationToken)
+	if err != nil {
+		logger.ErrorContext(ctx, "decoding the authorization token was failed", "error", err)
+		os.Exit(1)
+	}
 	for _, image := range images.ImageIds {
 		if tag := image.ImageTag; tag != nil {
 			fmt.Println(*tag)
@@ -65,6 +79,22 @@ func main() {
 		}
 
 	}
+	fmt.Println(string(dec[4:]))
+	docker, err := client.NewClientWithOpts(client.WithVersion("1.45"))
+	if err != nil {
+		logger.ErrorContext(ctx, "creating a docker client was failed", "error", err)
+		os.Exit(1)
+	}
+
+	body, err := docker.RegistryLogin(ctx, registry.AuthConfig{
+		Username:      "AWS",
+		Password:      string(dec)[4:],
+		ServerAddress: fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com", *regi.RegistryId, cfg.Region),
+	})
+	if err != nil {
+		logger.ErrorContext(ctx, "logging in to the registry was failed", "error", err)
+	}
+	fmt.Println(body.Status)
 }
 
 func newLogger(verbose bool) *slog.Logger {
