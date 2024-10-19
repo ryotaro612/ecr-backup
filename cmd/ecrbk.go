@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
-	"github.com/docker/docker/client"
+	_ "github.com/docker/docker/client"
 	"log/slog"
 	"os"
 )
@@ -50,6 +50,13 @@ func main() {
 	if err != nil {
 		logger.ErrorContext(ctx, "listing the images was failed", "error", err, "repository", repositoryName)
 	}
+
+	token, err := cli.GetAuthorizationToken(ctx, &ecr.GetAuthorizationTokenInput{})
+	if err != nil {
+		logger.ErrorContext(ctx, "getting the authorization token was failed", "error", err)
+		os.Exit(1)
+	}
+	fmt.Println(token)
 
 	for _, image := range images.ImageIds {
 		if tag := image.ImageTag; tag != nil {
