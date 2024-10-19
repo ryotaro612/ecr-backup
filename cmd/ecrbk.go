@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
-	"log/slog"
+	"github.com/ryotaro612/ecr-backup/internal"
 	"os"
 )
 
@@ -19,10 +19,11 @@ var repositoryName = flag.String("r", "", "repository")
 
 func main() {
 	ctx := context.Background()
-	logger := newLogger(*beVerbose)
+	logger := internal.NewLogger(*beVerbose)
 
 	flag.Parse()
-	err := verifyFlag()
+	err := internal.VerifyFlag(*repositoryName)
+
 	if err != nil {
 		logger.ErrorContext(ctx, "invalid command line arguments were passed", "error", err)
 		os.Exit(1)
@@ -95,21 +96,4 @@ func main() {
 		logger.ErrorContext(ctx, "logging in to the registry was failed", "error", err)
 	}
 	fmt.Println(body.Status)
-}
-
-func newLogger(verbose bool) *slog.Logger {
-	var level slog.Level
-	if verbose {
-		level = slog.LevelDebug
-	}
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
-	}))
-}
-
-func verifyFlag() error {
-	if *repositoryName == "" {
-		return fmt.Errorf("-r <repository name> is required")
-	}
-	return nil
 }
